@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>My Daily Executive Briefing</title>
+    <link>https://peeyusha.github.io/daily-morning-podcast</link>
+    <language>en-us</language>
+    <description>Daily audio news on Global Macro, Singapore, India, and AI/Agentic Commerce.</description>
+    <itunes:author>Executive AI</itunes:author>
+    <itunes:summary>Daily audio news on Global Macro, Singapore, India, and AI/Agentic Commerce.</itunes:summary>
+    <itunes:explicit>no</itunes:explicit>
+    <itunes:category text="News" />
+    <item>
+      <title>Daily Executive Briefing — August 30, 2026</title>
+      <description><![CDATA[Good morning. Here is your executive news digest for August 30, 2026.
+    
+    In Global Macro and Geopolitics, markets continue to digest the latest central banking commentary from the Jackson Hole Economic Policy Symposium, emphasizing data dependency and structural inflation monitoring.
+    
+    In Singapore and Southeast Asian markets, full-year growth projections remain resilient, supported by strong non-oil domestic exports and enduring global demand for AI server hardware and semiconductor manufacturing.
+    
+    In India Digital Public Infrastructure, monthly transaction volumes on UPI have surpassed twenty-three billion transactions, while the National Payments Corporation of India expands bilateral cross-border linkage pilots with Japan, Malaysia, and ASEAN partners.
+    
+    In AI, Agentic Commerce, and Payments, industry intelligence projects the agentic commerce market to cross one point five trillion dollars globally by 2030. Financial institutions and card schemes across the US and Asia-Pacific are publishing formal rules of the road for machine-initiated checkout, focusing on tokenized credentials, delegated spending limits, and automated settlement switches.
+    
+    Have a productive day ahead.]]></description>
+      <pubDate>Sun, 30 Aug 2026 04:51:51 GMT</pubDate>
+      <enclosure url="https://peeyusha.github.io/daily-morning-podcast/episodes/daily_briefing_2026_08_30.mp3" length="450288" type="audio/mpeg" />
+      <guid isPermaLink="true">https://peeyusha.github.io/daily-morning-podcast/episodes/daily_briefing_2026_08_30.mp3</guid>
+      <itunes:author>Executive AI</itunes:author>
+      <itunes:summary>Good morning. Here is your executive news digest for August 30, 2026.
+    
+    In Global Macro and Geopolitics, markets continue to digest the latest central banking commentary from the Jackson Hole Economic Policy Symposium, emphasizing data dependency and structural inflation monitoring.
+    
+    In Singapore and Southeast Asian markets, full-year growth projections remain resilient, supported by strong non-oil domestic exports and enduring global demand for AI server hardware and semiconductor manufacturing.
+    
+    In India Digital Public Infrastructure, monthly transaction volumes on UPI have surpassed twenty-three billion transactions, while the National Payments Corporation of India expands bilateral cross-border linkage pilots with Japan, Malaysia, and ASEAN partners.
+    
+    In AI, Agentic Commerce, and Payments, industry intelligence projects the agentic commerce market to cross one point five trillion dollars globally by 2030. Financial institutions and card schemes across the US and Asia-Pacific are publishing formal rules of the road for machine-initiated checkout, focusing on tokenized credentials, delegated spending limits, and automated settlement switches.
+    
+    Have a productive day ahead.</itunes:summary>
+      <itunes:explicit>no</itunes:explicit>
+    </item>
+  </channel>
+</rss>
