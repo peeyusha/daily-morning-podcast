@@ -3,30 +3,52 @@ import datetime
 import asyncio
 from email.utils import formatdate
 import edge_tts
+import requests
 
 PODCAST_TITLE = "My Daily Executive Briefing"
 PODCAST_DESCRIPTION = "Daily audio news on Global Macro, Singapore, India, and AI/Agentic Commerce."
 PODCAST_AUTHOR = "Executive AI"
-BASE_URL = os.environ.get("BASE_URL", "https://YOUR_GITHUB_USERNAME.github.io/daily-morning-podcast")
-VOICE = "en-US-AndrewNeural"  # Professional, natural neural broadcast voice
+BASE_URL = os.environ.get("BASE_URL", "https://peeyusha.github.io/daily-morning-podcast")
+VOICE = "en-US-AndrewNeural"
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 def get_today_script():
     today_str = datetime.date.today().strftime("%B %d, %Y")
     
-    # This text can be customized or linked to your preferred RSS/API sources
-    return f"""
-    Good morning. Here is your executive news digest for {today_str}.
+    prompt = f"""
+    You are an executive broadcast news writer and audio producer.
+    Synthesize the latest live morning news for {today_str} across:
+    1. Global Macro & Geopolitics (Overnight developments, major trade/policy shifts)
+    2. Singapore & Regional Economy (Trade data, MAS policies, Asian market open, tech sector)
+    3. India Digital Public Infrastructure & Policy (UPI, ONDC, RBI guidelines, fintech innovations)
+    4. Deep Focus: AI, Agentic Commerce & Payments (US & APAC cross-border rails, machine-to-machine checkout, delegated credentials, multi-rail settlement)
+
+    Strict Spoken Audio Rules:
+    - TOTAL LENGTH: Exactly 650 to 750 words (~5 minutes spoken time).
+    - TONE: Professional, energetic, objective broadcast style.
+    - Write numbers and figures in natural spoken English (e.g. "twenty-four billion dollars", "U-P-I", "O-N-D-C", "M-A-S").
+    - Do NOT include markdown tables, bullet asterisks, or raw URLs. Return only the pure spoken script.
+    """
     
-    In Global Macro and Geopolitics, markets continue to digest the latest central banking commentary from the Jackson Hole Economic Policy Symposium, emphasizing data dependency and structural inflation monitoring.
+    if not GEMINI_API_KEY:
+        print("GEMINI_API_KEY not found. Using fallback.")
+        return f"Good morning. Here is your executive news digest for {today_str}."
+
+    # Calls Gemini with live Google Search grounding enabled
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "tools": [{"google_search": {}}]
+    }
     
-    In Singapore and Southeast Asian markets, full-year growth projections remain resilient, supported by strong non-oil domestic exports and enduring global demand for AI server hardware and semiconductor manufacturing.
-    
-    In India Digital Public Infrastructure, monthly transaction volumes on UPI have surpassed twenty-three billion transactions, while the National Payments Corporation of India expands bilateral cross-border linkage pilots with Japan, Malaysia, and ASEAN partners.
-    
-    In AI, Agentic Commerce, and Payments, industry intelligence projects the agentic commerce market to cross one point five trillion dollars globally by 2030. Financial institutions and card schemes across the US and Asia-Pacific are publishing formal rules of the road for machine-initiated checkout, focusing on tokenized credentials, delegated spending limits, and automated settlement switches.
-    
-    Have a productive day ahead.
-    """.strip()
+    try:
+        response = requests.post(url, json=payload, timeout=60)
+        data = response.json()
+        script = data["candidates"][0]["content"]["parts"][0]["text"]
+        return script.strip()
+    except Exception as e:
+        print(f"Error fetching from Gemini: {e}")
+        return f"Good morning. Here is your executive news briefing for {today_str}."
 
 async def generate_audio(text: str, output_path: str):
     communicate = edge_tts.Communicate(text, VOICE)
