@@ -34,8 +34,8 @@ def get_today_script():
         print("GEMINI_API_KEY not found in environment.")
         return f"Good morning. Here is your executive news briefing for {now_str}."
 
-    # Use production gemini-2.0-flash with search grounding
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+    # Using verified Gemini 3.6 Flash endpoint with live search grounding
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "tools": [{"google_search": {}}]
@@ -47,13 +47,10 @@ def get_today_script():
         
         if response.status_code != 200:
             print(f"Gemini API returned error {response.status_code}: {data}")
-            # Fallback to gemini-1.5-flash if needed
-            fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-            response = requests.post(fallback_url, json=payload, timeout=60)
-            data = response.json()
+            return f"Good morning. Here is your executive news briefing for {now_str}."
 
         script = data["candidates"][0]["content"]["parts"][0]["text"]
-        print("Successfully generated live news script from Gemini.")
+        print("Successfully generated live news script from Gemini 3.6 Flash.")
         return script.strip()
     except Exception as e:
         print(f"Error fetching from Gemini: {e}")
