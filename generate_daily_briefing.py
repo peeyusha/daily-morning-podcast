@@ -13,11 +13,11 @@ VOICE = "en-US-AndrewNeural"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 def get_today_script():
-    today_str = datetime.date.today().strftime("%B %d, %Y")
+    now_str = datetime.datetime.now().strftime("%B %d, %Y at %I:%M %p")
     
     prompt = f"""
     You are an executive broadcast news writer and audio producer.
-    Synthesize the latest live morning news for {today_str} across:
+    Synthesize the latest live news for {now_str} across:
     1. Global Macro & Geopolitics (Overnight developments, major trade/policy shifts)
     2. Singapore & Regional Economy (Trade data, MAS policies, Asian market open, tech sector)
     3. India Digital Public Infrastructure & Policy (UPI, ONDC, RBI guidelines, fintech innovations)
@@ -31,11 +31,11 @@ def get_today_script():
     """
     
     if not GEMINI_API_KEY:
-        print("GEMINI_API_KEY not found. Using fallback.")
-        return f"Good morning. Here is your executive news digest for {today_str}."
+        print("GEMINI_API_KEY not found in environment.")
+        return f"Good morning. Here is your executive news briefing for {now_str}."
 
-    # Calls Gemini with live Google Search grounding enabled
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    # Use production gemini-2.0-flash with search grounding
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "tools": [{"google_search": {}}]
@@ -44,15 +44,25 @@ def get_today_script():
     try:
         response = requests.post(url, json=payload, timeout=60)
         data = response.json()
+        
+        if response.status_code != 200:
+            print(f"Gemini API returned error {response.status_code}: {data}")
+            # Fallback to gemini-1.5-flash if needed
+            fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+            response = requests.post(fallback_url, json=payload, timeout=60)
+            data = response.json()
+
         script = data["candidates"][0]["content"]["parts"][0]["text"]
+        print("Successfully generated live news script from Gemini.")
         return script.strip()
     except Exception as e:
         print(f"Error fetching from Gemini: {e}")
-        return f"Good morning. Here is your executive news briefing for {today_str}."
+        return f"Good morning. Here is your executive news briefing for {now_str}."
 
 async def generate_audio(text: str, output_path: str):
     communicate = edge_tts.Communicate(text, VOICE)
     await communicate.save(output_path)
+    print(f"Audio saved to: {output_path}")
 
 def update_podcast_rss(audio_filename: str, episode_title: str, episode_summary: str):
     rss_path = "rss.xml"
@@ -100,14 +110,15 @@ def update_podcast_rss(audio_filename: str, episode_title: str, episode_summary:
 
 def main():
     os.makedirs("episodes", exist_ok=True)
-    today_slug = datetime.date.today().strftime("%Y_%m_%d")
-    today_title = f"Daily Executive Briefing — {datetime.date.today().strftime('%B %d, %Y')}"
-    audio_file = f"daily_briefing_{today_slug}.mp3"
+    now = datetime.datetime.now()
+    timestamp_slug = now.strftime("%Y_%m_%d_%H%M")
+    episode_title = f"Daily Executive Briefing — {now.strftime('%B %d, %Y (%I:%M %p)')}"
+    audio_file = f"daily_briefing_{timestamp_slug}.mp3"
     audio_path = os.path.join("episodes", audio_file)
     
     script_text = get_today_script()
     asyncio.run(generate_audio(script_text, audio_path))
-    update_podcast_rss(audio_file, today_title, script_text)
+    update_podcast_rss(audio_file, episode_title, script_text)
 
 if __name__ == "__main__":
     main()
