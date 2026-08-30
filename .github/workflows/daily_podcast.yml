@@ -28,6 +28,7 @@ jobs:
       - name: Generate Audio and Update RSS
         env:
           BASE_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python generate_daily_briefing.py
 
       - name: Commit & Push New Episode
@@ -35,5 +36,5 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add episodes/ rss.xml
-          git commit -m "Add daily briefing episode for $(date +'%Y-%m-%d')" || exit 0
+          git commit -m "Add daily briefing episode for $(date +'%Y-%m-%d %H:%M')" || exit 0
           git push
