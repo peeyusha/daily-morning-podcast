@@ -2,8 +2,8 @@ name: Generate Daily Audio Podcast
 
 on:
   schedule:
-    # 22:30 UTC = 6:30 AM SGT next morning
-    - cron: '30 22 * * *'
+    # Runs at 22:15 UTC = 6:15 AM SGT (off-peak to prevent GitHub runner queue delays)
+    - cron: '15 22 * * *'
   workflow_dispatch: # Allows manual 1-click run anytime
 
 jobs:
