@@ -1,0 +1,39 @@
+name: Generate Daily Audio Podcast
+
+on:
+  schedule:
+    # 22:30 UTC = 6:30 AM SGT next morning
+    - cron: '30 22 * * *'
+  workflow_dispatch: # Allows manual 1-click run anytime
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate Audio and Update RSS
+        env:
+          BASE_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+        run: python generate_daily_briefing.py
+
+      - name: Commit & Push New Episode
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add episodes/ rss.xml
+          git commit -m "Add daily briefing episode for $(date +'%Y-%m-%d')" || exit 0
+          git push
