@@ -1,6 +1,8 @@
 import os
 import datetime
 import asyncio
+import urllib.parse
+import xml.etree.ElementTree as ET
 from email.utils import formatdate
 import edge_tts
 import requests
@@ -12,12 +14,50 @@ BASE_URL = os.environ.get("BASE_URL", "https://peeyusha.github.io/daily-morning-
 VOICE = "en-US-AndrewNeural"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
+def fetch_live_news():
+    """Fetches breaking news headlines across the 4 core pillars from live RSS feeds."""
+    topics = {
+        "Global Macro & Geopolitics": "world news politics economy",
+        "Singapore & Regional Economy": "Singapore business economy AI",
+        "India DPI & Fintech": "India UPI fintech ONDC economy",
+        "AI & Agentic Commerce": "agentic commerce AI payments autonomous checkout"
+    }
+    
+    gathered_news = []
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    
+    for category, query in topics.items():
+        encoded = urllib.parse.quote(query)
+        rss_url = f"https://news.google.com/rss/search?q={encoded}&hl=en-US&gl=US&ceid=US:en"
+        try:
+            resp = requests.get(rss_url, headers=headers, timeout=10)
+            root = ET.fromstring(resp.content)
+            headlines = []
+            for item in root.findall(".//item")[:4]:
+                title = item.find("title").text if item.find("title") is not None else ""
+                if title:
+                    # Clean source attribution suffix if present
+                    clean_title = title.rsplit(" - ", 1)[0]
+                    headlines.append(f"  • {clean_title}")
+            
+            if headlines:
+                gathered_news.append(f"### {category}:\n" + "\n".join(headlines))
+        except Exception as e:
+            print(f"Notice: Could not fetch RSS for {category}: {e}")
+            
+    return "\n\n".join(gathered_news)
+
 def get_today_script():
     now_str = datetime.datetime.now().strftime("%B %d, %Y at %I:%M %p")
+    live_news_context = fetch_live_news()
     
     prompt = f"""
     You are an executive broadcast news writer and audio producer.
-    Synthesize the latest live news for {now_str} across:
+    Synthesize the following live breaking news headlines for {now_str} into a cohesive, high-yield audio news digest:
+
+    {live_news_context}
+
+    Pillars to cover:
     1. Global Macro & Geopolitics (Overnight developments, major trade/policy shifts)
     2. Singapore & Regional Economy (Trade data, MAS policies, Asian market open, tech sector)
     3. India Digital Public Infrastructure & Policy (UPI, ONDC, RBI guidelines, fintech innovations)
@@ -25,7 +65,7 @@ def get_today_script():
 
     Strict Spoken Audio Rules:
     - TOTAL LENGTH: Exactly 650 to 750 words (~5 minutes spoken time).
-    - TONE: Professional, energetic, objective broadcast style.
+    - TONE: Professional, energetic, objective broadcast style (written for the ear).
     - Write numbers and figures in natural spoken English (e.g. "twenty-four billion dollars", "U-P-I", "O-N-D-C", "M-A-S").
     - Do NOT include markdown tables, bullet asterisks, or raw URLs. Return only the pure spoken script.
     """
@@ -34,11 +74,10 @@ def get_today_script():
         print("GEMINI_API_KEY not found in environment.")
         return f"Good morning. Here is your executive news briefing for {now_str}."
 
-    # Using verified Gemini 3.6 Flash endpoint with live search grounding
+    # Standard generateContent request without throttled search tool
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "tools": [{"google_search": {}}]
+        "contents": [{"parts": [{"text": prompt}]}]
     }
     
     try:
@@ -46,7 +85,7 @@ def get_today_script():
         data = response.json()
         
         if response.status_code != 200:
-            print(f"Gemini API returned error {response.status_code}: {data}")
+            print(f"Gemini API returned {response.status_code}: {data}")
             return f"Good morning. Here is your executive news briefing for {now_str}."
 
         script = data["candidates"][0]["content"]["parts"][0]["text"]
