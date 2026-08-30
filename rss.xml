@@ -3,6 +3,16 @@
   <channel>
     <item>
       <title>Daily Executive Briefing — August 30, 2026</title>
+      <description><![CDATA[Good morning. Here is your executive news briefing for August 30, 2026.]]></description>
+      <pubDate>Sun, 30 Aug 2026 13:54:11 GMT</pubDate>
+      <enclosure url="https://peeyusha.github.io/daily-morning-podcast/episodes/daily_briefing_2026_08_30.mp3" length="34560" type="audio/mpeg" />
+      <guid isPermaLink="true">https://peeyusha.github.io/daily-morning-podcast/episodes/daily_briefing_2026_08_30.mp3</guid>
+      <itunes:author>Executive AI</itunes:author>
+      <itunes:summary>Good morning. Here is your executive news briefing for August 30, 2026.</itunes:summary>
+      <itunes:explicit>no</itunes:explicit>
+    </item>
+    <item>
+      <title>Daily Executive Briefing — August 30, 2026</title>
       <description><![CDATA[Good morning. Here is your executive news digest for August 30, 2026.]]></description>
       <pubDate>Sun, 30 Aug 2026 13:45:35 GMT</pubDate>
       <enclosure url="https://peeyusha.github.io/daily-morning-podcast/episodes/daily_briefing_2026_08_30.mp3" length="35136" type="audio/mpeg" />
