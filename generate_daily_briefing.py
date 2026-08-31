@@ -1,4 +1,5 @@
 import os
+import time
 import datetime
 import asyncio
 import urllib.parse
@@ -30,13 +31,12 @@ def fetch_live_news():
         encoded = urllib.parse.quote(query)
         rss_url = f"https://news.google.com/rss/search?q={encoded}&hl=en-US&gl=US&ceid=US:en"
         try:
-            resp = requests.get(rss_url, headers=headers, timeout=10)
+            resp = requests.get(rss_url, headers=headers, timeout=15)
             root = ET.fromstring(resp.content)
             headlines = []
             for item in root.findall(".//item")[:4]:
                 title = item.find("title").text if item.find("title") is not None else ""
                 if title:
-                    # Clean source attribution suffix if present
                     clean_title = title.rsplit(" - ", 1)[0]
                     headlines.append(f"  • {clean_title}")
             
@@ -74,26 +74,37 @@ def get_today_script():
         print("GEMINI_API_KEY not found in environment.")
         return f"Good morning. Here is your executive news briefing for {now_str}."
 
-    # Standard generateContent request without throttled search tool
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}]
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 2048
+        }
     }
     
-    try:
-        response = requests.post(url, json=payload, timeout=60)
-        data = response.json()
-        
-        if response.status_code != 200:
-            print(f"Gemini API returned {response.status_code}: {data}")
-            return f"Good morning. Here is your executive news briefing for {now_str}."
+    # 2-attempt retry loop with 180-second timeout
+    for attempt in range(1, 3):
+        try:
+            print(f"Connecting to Gemini 3.6 Flash (Attempt {attempt}/2)...")
+            response = requests.post(url, json=payload, timeout=180)
+            data = response.json()
+            
+            if response.status_code == 200 and "candidates" in data:
+                script = data["candidates"][0]["content"]["parts"][0]["text"]
+                print("Successfully generated live news script from Gemini 3.6 Flash.")
+                return script.strip()
+            else:
+                print(f"API returned status {response.status_code}: {data}")
+        except requests.exceptions.Timeout:
+            print(f"Attempt {attempt} timed out. Retrying in 3 seconds...")
+            time.sleep(3)
+        except Exception as e:
+            print(f"Error on attempt {attempt}: {e}")
+            time.sleep(3)
 
-        script = data["candidates"][0]["content"]["parts"][0]["text"]
-        print("Successfully generated live news script from Gemini 3.6 Flash.")
-        return script.strip()
-    except Exception as e:
-        print(f"Error fetching from Gemini: {e}")
-        return f"Good morning. Here is your executive news briefing for {now_str}."
+    print("Falling back to standard briefing.")
+    return f"Good morning. Here is your executive news briefing for {now_str}."
 
 async def generate_audio(text: str, output_path: str):
     communicate = edge_tts.Communicate(text, VOICE)
