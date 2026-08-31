@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import datetime
 import asyncio
@@ -47,28 +48,48 @@ def fetch_live_news():
             
     return "\n\n".join(gathered_news)
 
+def clean_script_for_audio(raw_text: str) -> str:
+    """Strips LLM planning scratchpads, target word counts, and markdown symbols."""
+    # Find start of actual broadcast
+    match = re.search(r'(Good (morning|afternoon|evening).*|\bHere is your executive.*)', raw_text, re.IGNORECASE | re.DOTALL)
+    if match:
+        text = match.group(0)
+    else:
+        text = raw_text
+
+    # Strip markdown headers, bold/italic asterisks, bullets, planning tags
+    text = re.sub(r'#+\s*', '', text)
+    text = re.sub(r'\*+', '', text)
+    text = re.sub(r'^\s*[-•]\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'\(Target:.*?\)', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\(Word count:.*?\)', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\[.*?\]', '', text)
+    
+    # Normalize clean whitespace
+    text = re.sub(r'\n{2,}', '\n\n', text).strip()
+    return text
+
 def get_today_script():
     now_str = datetime.datetime.now().strftime("%B %d, %Y at %I:%M %p")
     live_news_context = fetch_live_news()
     
     prompt = f"""
-    You are an executive broadcast news writer and audio producer.
-    Synthesize the following live breaking news headlines for {now_str} into a cohesive, high-yield audio news digest:
+Write a complete, full-length 5-minute broadcast audio news script (around 700 words) for {now_str} based on these live breaking news developments:
 
-    {live_news_context}
+{live_news_context}
 
-    Pillars to cover:
-    1. Global Macro & Geopolitics (Overnight developments, major trade/policy shifts)
-    2. Singapore & Regional Economy (Trade data, MAS policies, Asian market open, tech sector)
-    3. India Digital Public Infrastructure & Policy (UPI, ONDC, RBI guidelines, fintech innovations)
-    4. Deep Focus: AI, Agentic Commerce & Payments (US & APAC cross-border rails, machine-to-machine checkout, delegated credentials, multi-rail settlement)
+Cover these 4 pillars in order:
+1. Global Macro & Geopolitics
+2. Singapore & Regional Economy
+3. India Digital Public Infrastructure & Policy
+4. AI, Agentic Commerce & Payments (US & APAC)
 
-    Strict Spoken Audio Rules:
-    - TOTAL LENGTH: Exactly 650 to 750 words (~5 minutes spoken time).
-    - TONE: Professional, energetic, objective broadcast style (written for the ear).
-    - Write numbers and figures in natural spoken English (e.g. "twenty-four billion dollars", "U-P-I", "O-N-D-C", "M-A-S").
-    - Do NOT include markdown tables, bullet asterisks, or raw URLs. Return only the pure spoken script.
-    """
+Strict Instructions:
+- Begin immediately with: "Good morning. Here is your executive news briefing for {now_str}."
+- Write the FULL comprehensive spoken script. Do NOT output an outline, planning strategy, target word counts, or bulleted notes.
+- Write every number phonetically in spoken words (e.g. "twenty-four billion dollars", "U-P-I", "O-N-D-C", "M-A-S").
+- No markdown formatting, asterisks, or headings. Output only the pure spoken words.
+"""
     
     if not GEMINI_API_KEY:
         print("GEMINI_API_KEY not found in environment.")
@@ -76,14 +97,18 @@ def get_today_script():
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
+        "systemInstruction": {
+            "parts": [{
+                "text": "You are a senior radio broadcast news anchor. You output exclusively the complete, continuous spoken news script. You never write outlines, thinking scratchpads, meta-commentary, or markdown asterisks."
+            }]
+        },
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
-            "temperature": 0.7,
-            "maxOutputTokens": 2048
+            "temperature": 0.3,
+            "maxOutputTokens": 3000
         }
     }
     
-    # 2-attempt retry loop with 180-second timeout
     for attempt in range(1, 3):
         try:
             print(f"Connecting to Gemini 3.6 Flash (Attempt {attempt}/2)...")
@@ -91,9 +116,11 @@ def get_today_script():
             data = response.json()
             
             if response.status_code == 200 and "candidates" in data:
-                script = data["candidates"][0]["content"]["parts"][0]["text"]
-                print("Successfully generated live news script from Gemini 3.6 Flash.")
-                return script.strip()
+                raw_script = data["candidates"][0]["content"]["parts"][0]["text"]
+                cleaned_script = clean_script_for_audio(raw_script)
+                word_count = len(cleaned_script.split())
+                print(f"Successfully generated clean news script ({word_count} words).")
+                return cleaned_script
             else:
                 print(f"API returned status {response.status_code}: {data}")
         except requests.exceptions.Timeout:
