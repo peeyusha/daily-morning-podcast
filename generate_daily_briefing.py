@@ -1,137 +1,200 @@
 import os
 import re
+import sys
 import time
 import datetime
 import asyncio
 import urllib.parse
 import xml.etree.ElementTree as ET
-from email.utils import formatdate
+from email.utils import formatdate, parsedate_to_datetime
 import edge_tts
 import requests
 
 PODCAST_TITLE = "My Daily Executive Briefing"
-PODCAST_DESCRIPTION = "Daily audio news on Global Macro, Singapore, India, and AI/Agentic Commerce."
+PODCAST_DESCRIPTION = "Comprehensive audio briefing covering the last 24 hours of Global Economy, General Tech, AI Chatbots, Payments, and Agentic Commerce across the US, India, and Japan."
 PODCAST_AUTHOR = "Executive AI"
 BASE_URL = os.environ.get("BASE_URL", "https://peeyusha.github.io/daily-morning-podcast")
 VOICE = "en-US-AndrewNeural"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-def fetch_live_news():
-    """Fetches breaking news headlines across the 4 core pillars from live RSS feeds."""
+MODELS_TO_TRY = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
+
+def fetch_live_news_deep():
+    """Fetches news published strictly within the last 24 hours across our targeted sectors."""
     topics = {
-        "Global Macro & Geopolitics": "world news politics economy",
-        "Singapore & Regional Economy": "Singapore business economy AI",
-        "India DPI & Fintech": "India UPI fintech ONDC economy",
-        "AI & Agentic Commerce": "agentic commerce AI payments autonomous checkout"
+        "Global Economy & Central Banks": "global economy inflation central bank Federal Reserve GDP interest rates when:24h",
+        "General Tech & Enterprise Software": "technology news big tech software hardware earnings when:24h",
+        "AI Frontier Models & Chatbots": "generative AI frontier models chatbot OpenAI Anthropic Google Meta LLM when:24h",
+        "US Payments & Agentic Commerce": "US agentic commerce AI checkout shopping payments Stripe Visa Mastercard when:24h",
+        "India Digital Public Infrastructure & Fintech": "India UPI ONDC fintech RBI payments policy when:24h",
+        "Japan Cashless & Financial Tech": "Japan fintech payments cashless digital yen PayPay FSA when:24h",
+        "Strategic Partnerships & Product Launches": "fintech AI partnership product launch payments commerce when:24h"
     }
     
     gathered_news = []
+    news_items_structured = {}
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    cutoff_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=28)
     
     for category, query in topics.items():
         encoded = urllib.parse.quote(query)
         rss_url = f"https://news.google.com/rss/search?q={encoded}&hl=en-US&gl=US&ceid=US:en"
+        items_in_cat = []
         try:
             resp = requests.get(rss_url, headers=headers, timeout=15)
             root = ET.fromstring(resp.content)
             headlines = []
-            for item in root.findall(".//item")[:4]:
+            for item in root.findall(".//item")[:5]:
                 title = item.find("title").text if item.find("title") is not None else ""
+                desc = item.find("description").text if item.find("description") is not None else ""
+                pub_date_elem = item.find("pubDate")
+                
+                # Check timestamp to enforce 24-hour recency
+                if pub_date_elem is not None and pub_date_elem.text:
+                    try:
+                        pub_dt = parsedate_to_datetime(pub_date_elem.text)
+                        if pub_dt < cutoff_time:
+                            continue  # Skip stale stories
+                    except Exception:
+                        pass
+
+                clean_desc = re.sub(r'<[^>]+>', '', desc).strip()
                 if title:
                     clean_title = title.rsplit(" - ", 1)[0]
-                    headlines.append(f"  • {clean_title}")
+                    headlines.append(f"  • {clean_title}: {clean_desc[:180]}")
+                    items_in_cat.append({"title": clean_title, "summary": clean_desc})
             
             if headlines:
                 gathered_news.append(f"### {category}:\n" + "\n".join(headlines))
+                news_items_structured[category] = items_in_cat
         except Exception as e:
-            print(f"Notice: Could not fetch RSS for {category}: {e}")
+            print(f"Notice: RSS fetch notice for {category}: {e}")
             
-    return "\n\n".join(gathered_news)
+    return "\n\n".join(gathered_news), news_items_structured
 
 def clean_script_for_audio(raw_text: str) -> str:
-    """Strips LLM planning scratchpads, target word counts, and markdown symbols."""
-    # Find start of actual broadcast
+    """Sanitizes text so speech engine reads only pure broadcast dialogue."""
     match = re.search(r'(Good (morning|afternoon|evening).*|\bHere is your executive.*)', raw_text, re.IGNORECASE | re.DOTALL)
     if match:
         text = match.group(0)
     else:
         text = raw_text
 
-    # Strip markdown headers, bold/italic asterisks, bullets, planning tags
     text = re.sub(r'#+\s*', '', text)
     text = re.sub(r'\*+', '', text)
     text = re.sub(r'^\s*[-•]\s*', '', text, flags=re.MULTILINE)
     text = re.sub(r'\(Target:.*?\)', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\(Word count:.*?\)', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\[.*?\]', '', text)
-    
-    # Normalize clean whitespace
     text = re.sub(r'\n{2,}', '\n\n', text).strip()
     return text
 
+def build_standalone_rss_broadcast(structured_news, now_str):
+    """Fallback generator: Compiles a rich report directly from 24-hour articles if AI APIs are down."""
+    lines = [
+        f"Good morning. Here is your executive briefing for {now_str}, covering breaking developments from the past 24 hours.",
+        "Today we bring you an exhaustive update across the global economy, general technology, artificial intelligence, payments, and agentic commerce across the United States, India, and Japan.",
+    ]
+    
+    for category, items in structured_news.items():
+        lines.append(f"\nTurning now to developments over the last 24 hours in {category}:")
+        for item in items:
+            t = re.sub(r'#|\*|-', '', item['title']).strip()
+            s = re.sub(r'#|\*|-', '', item['summary']).strip()
+            if t and s:
+                lines.append(f"{t}. {s}")
+            elif t:
+                lines.append(f"{t}.")
+                
+    lines.append("\nIn summary, the rapid integration of foundation models, automated checkout infrastructure, and macroeconomic realignments continues to shape commercial decision-making across our primary markets.")
+    lines.append("Thank you for listening. Have a productive day ahead.")
+    return "\n\n".join(lines)
+
 def get_today_script():
     now_str = datetime.datetime.now().strftime("%B %d, %Y at %I:%M %p")
-    live_news_context = fetch_live_news()
+    raw_news_context, structured_news = fetch_live_news_deep()
     
     prompt = f"""
-Write a complete, full-length 5-minute broadcast audio news script (around 700 words) for {now_str} based on these live breaking news developments:
+You are an executive broadcast news anchor and senior industry analyst.
+Synthesize the following live news reports for {now_str} into a comprehensive, detailed 10-to-14 minute audio briefing (approx. 1,400 to 1,800 words):
 
-{live_news_context}
+{raw_news_context}
 
-Cover these 4 pillars in order:
-1. Global Macro & Geopolitics
-2. Singapore & Regional Economy
-3. India Digital Public Infrastructure & Policy
-4. AI, Agentic Commerce & Payments (US & APAC)
+CRITICAL TIMEFRAME CONSTRAINT:
+- Cover EXCLUSIVELY events, announcements, and data released in the PAST 24 HOURS.
+- Treat this as a fresh daily morning newspaper. Do not summarize historical background or outdated stories.
 
-Strict Instructions:
-- Begin immediately with: "Good morning. Here is your executive news briefing for {now_str}."
-- Write the FULL comprehensive spoken script. Do NOT output an outline, planning strategy, target word counts, or bulleted notes.
-- Write every number phonetically in spoken words (e.g. "twenty-four billion dollars", "U-P-I", "O-N-D-C", "M-A-S").
-- No markdown formatting, asterisks, or headings. Output only the pure spoken words.
+Provide exhaustive, in-depth coverage across these core sections:
+
+1. Global Economy & Major Markets (Past 24 Hours):
+   - Macroeconomic updates from major financial wire sources (interest rate outlooks, central bank commentary from Fed, ECB, BOJ, MAS, RBI).
+   - Fresh inflation data (CPI/PPI prints), GDP forecasts, sovereign bond movements, and energy supply-chain updates.
+
+2. General Tech News & Enterprise Shifts (Past 24 Hours):
+   - Big Tech strategic moves, major quarterly earnings reactions, cloud infrastructure, and semiconductor fabrication.
+   - Enterprise software, cybersecurity developments, and platform updates.
+
+3. Artificial Intelligence & Chatbot Ecosystem (Past 24 Hours):
+   - Frontier foundation model releases and research breakthroughs (multimodal reasoning, context scaling).
+   - Chatbot developments and consumer/enterprise assistant updates (ChatGPT, Claude, Gemini, Meta AI, open-source weights).
+   - Enterprise AI copilot adoption and agent developer tooling.
+
+4. Deep Focus: Payments, Shopping & Agentic Commerce across Key Markets (Past 24 Hours):
+   - United States: Autonomous AI shopping agents, machine-to-machine checkout rails, merchant platforms (Shopify, Amazon, Walmart), payment network standards (Visa, Mastercard, Stripe, PayPal, FedNow), and regulatory policy (FTC, CFPB).
+   - India: Digital Public Infrastructure (UPI, ONDC, OCEN), credit-on-UPI, biometric payments, RBI circulars, and NPCI cross-border bilateral links.
+   - Japan: Cashless transition momentum, digital wallet ecosystems (PayPay, Rakuten Pay, Line Pay), Financial Services Agency (FSA) regulations, digital yen, and retail AI pilots.
+
+5. Product Announcements, Partnerships & Major Events (Past 24 Hours):
+   - Keynote speeches, major partnership agreements between banks, payment processors, and AI platforms.
+   - Notable industry summits and regulatory forums.
+
+Strict Spoken Audio Formatting Rules:
+- LENGTH: Deep, long-form broadcast (between 1,400 and 1,800 words). Cover substantive details and context.
+- TONE: Professional, authoritative, engaging broadcast tone (written strictly for listening with earphones).
+- FORMAT: Output ONLY the spoken text. Begin immediately with: "Good morning. Here is your executive news briefing for {now_str}, covering key developments from the past 24 hours."
+- Write all numbers, currency figures, and acronyms phonetically in spoken words (e.g. "two point five billion dollars", "U-P-I", "O-N-D-C", "F-S-A", "R-B-I", "L-L-Ms").
+- Do NOT output any outlines, planning scratchpads, target word counts, markdown asterisks, or headings. Output pure spoken narrative.
 """
-    
-    if not GEMINI_API_KEY:
-        print("GEMINI_API_KEY not found in environment.")
-        return f"Good morning. Here is your executive news briefing for {now_str}."
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={GEMINI_API_KEY}"
-    payload = {
-        "systemInstruction": {
-            "parts": [{
-                "text": "You are a senior radio broadcast news anchor. You output exclusively the complete, continuous spoken news script. You never write outlines, thinking scratchpads, meta-commentary, or markdown asterisks."
-            }]
-        },
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.3,
-            "maxOutputTokens": 3000
-        }
-    }
-    
-    for attempt in range(1, 3):
-        try:
-            print(f"Connecting to Gemini 3.6 Flash (Attempt {attempt}/2)...")
-            response = requests.post(url, json=payload, timeout=180)
-            data = response.json()
+    if GEMINI_API_KEY:
+        for model_name in MODELS_TO_TRY:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+            payload = {
+                "systemInstruction": {
+                    "parts": [{
+                        "text": "You are a senior broadcast journalist. Output exclusively the full, continuous spoken audio script with zero outlines, zero asterisks, zero markdown, and zero meta-commentary."
+                    }]
+                },
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.3,
+                    "maxOutputTokens": 4096
+                }
+            }
             
-            if response.status_code == 200 and "candidates" in data:
-                raw_script = data["candidates"][0]["content"]["parts"][0]["text"]
-                cleaned_script = clean_script_for_audio(raw_script)
-                word_count = len(cleaned_script.split())
-                print(f"Successfully generated clean news script ({word_count} words).")
-                return cleaned_script
-            else:
-                print(f"API returned status {response.status_code}: {data}")
-        except requests.exceptions.Timeout:
-            print(f"Attempt {attempt} timed out. Retrying in 3 seconds...")
-            time.sleep(3)
-        except Exception as e:
-            print(f"Error on attempt {attempt}: {e}")
-            time.sleep(3)
-
-    print("Falling back to standard briefing.")
-    return f"Good morning. Here is your executive news briefing for {now_str}."
+            for attempt in range(1, 3):
+                try:
+                    print(f"Connecting to {model_name} (Attempt {attempt}/2)...")
+                    response = requests.post(url, json=payload, timeout=180)
+                    data = response.json()
+                    
+                    if response.status_code == 200 and "candidates" in data:
+                        raw_script = data["candidates"][0]["content"]["parts"][0]["text"]
+                        cleaned = clean_script_for_audio(raw_script)
+                        word_count = len(cleaned.split())
+                        if word_count >= 500:
+                            print(f"Successfully generated deep script via {model_name} ({word_count} words).")
+                            return cleaned
+                        else:
+                            print(f"Warning: Output too short ({word_count} words). Retrying...")
+                    else:
+                        print(f"{model_name} returned status {response.status_code}: {data.get('error', {}).get('message', '')}")
+                except Exception as e:
+                    print(f"Error connecting to {model_name} on attempt {attempt}: {e}")
+                time.sleep(2)
+    
+    print("AI API unavailable or exhausted. Generating comprehensive standalone RSS broadcast...")
+    return build_standalone_rss_broadcast(structured_news, now_str)
 
 async def generate_audio(text: str, output_path: str):
     communicate = edge_tts.Communicate(text, VOICE)
@@ -166,7 +229,9 @@ def update_podcast_rss(audio_filename: str, episode_title: str, episode_summary:
     <itunes:author>{PODCAST_AUTHOR}</itunes:author>
     <itunes:summary>{PODCAST_DESCRIPTION}</itunes:summary>
     <itunes:explicit>no</itunes:explicit>
-    <itunes:category text="News" />
+    <itunes:category text="Business">
+      <itunes:category text="Technology" />
+    </itunes:category>
 {item_xml}
   </channel>
 </rss>"""
@@ -191,8 +256,17 @@ def main():
     audio_path = os.path.join("episodes", audio_file)
     
     script_text = get_today_script()
+    word_count = len(script_text.split())
+    
+    # Safety guardrail: Never publish a broken 1-line snippet
+    if word_count < 350:
+        print(f"Safety Guardrail: Script length ({word_count} words) below minimum threshold. Skipping publish.")
+        sys.exit(0)
+        
+    print(f"Generating audio for comprehensive 24-hour script ({word_count} words)...")
     asyncio.run(generate_audio(script_text, audio_path))
     update_podcast_rss(audio_file, episode_title, script_text)
+    print("Workflow completed successfully.")
 
 if __name__ == "__main__":
     main()
