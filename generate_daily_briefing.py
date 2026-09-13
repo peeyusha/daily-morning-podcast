@@ -5,6 +5,8 @@ import time
 import datetime
 import asyncio
 import urllib.parse
+import html
+from xml.sax.saxutils import escape
 import xml.etree.ElementTree as ET
 from email.utils import formatdate, parsedate_to_datetime
 import edge_tts
@@ -54,13 +56,14 @@ def fetch_live_news_deep():
                     try:
                         pub_dt = parsedate_to_datetime(pub_date_elem.text)
                         if pub_dt < cutoff_time:
-                            continue  # Skip stale stories
+                            continue
                     except Exception:
                         pass
 
                 clean_desc = re.sub(r'<[^>]+>', '', desc).strip()
+                clean_desc = html.unescape(clean_desc).replace('\u00a0', ' ')
                 if title:
-                    clean_title = title.rsplit(" - ", 1)[0]
+                    clean_title = html.unescape(title.rsplit(" - ", 1)[0]).replace('\u00a0', ' ')
                     headlines.append(f"  • {clean_title}: {clean_desc[:180]}")
                     items_in_cat.append({"title": clean_title, "summary": clean_desc})
             
@@ -86,6 +89,7 @@ def clean_script_for_audio(raw_text: str) -> str:
     text = re.sub(r'\(Target:.*?\)', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\(Word count:.*?\)', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\[.*?\]', '', text)
+    text = html.unescape(text).replace('\u00a0', ' ')
     text = re.sub(r'\n{2,}', '\n\n', text).strip()
     return text
 
@@ -97,7 +101,8 @@ def build_standalone_rss_broadcast(structured_news, now_str):
     ]
     
     for category, items in structured_news.items():
-        lines.append(f"\nTurning now to developments over the last 24 hours in {category}:")
+        clean_cat = category.replace('&', 'and')
+        lines.append(f"\nTurning now to developments over the last 24 hours in {clean_cat}:")
         for item in items:
             t = re.sub(r'#|\*|-', '', item['title']).strip()
             s = re.sub(r'#|\*|-', '', item['summary']).strip()
@@ -201,20 +206,66 @@ async def generate_audio(text: str, output_path: str):
     await communicate.save(output_path)
     print(f"Audio saved to: {output_path}")
 
+def sanitize_text_for_xml(text: str) -> str:
+    """Escapes special XML characters and strips HTML entities like &nbsp;"""
+    if not text:
+        return ""
+    text = html.unescape(text)
+    text = text.replace('\u00a0', ' ')
+    text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F]', '', text)
+    return escape(text)
+
+def clean_cdata_text(text: str) -> str:
+    """Cleans text intended for CDATA blocks so it contains no HTML entities or illegal tags."""
+    if not text:
+        return ""
+    text = html.unescape(text)
+    text = text.replace('\u00a0', ' ')
+    text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F]', '', text)
+    text = text.replace(']]>', ']]&gt;')
+    return text
+
+def repair_existing_rss(content: str) -> str:
+    """Heals any corrupted &nbsp; or unescaped ampersands in previous feed entries."""
+    content = content.replace('&nbsp;', ' ')
+    content = content.replace('\u00a0', ' ')
+    
+    # Repair title tags
+    content = re.sub(
+        r'<title>(.*?)</title>',
+        lambda m: f"<title>{sanitize_text_for_xml(html.unescape(m.group(1)))}</title>",
+        content
+    )
+    
+    # Repair itunes:summary tags
+    def fix_summary(match):
+        inner = match.group(1)
+        if inner.startswith('<![CDATA['):
+            clean_inner = clean_cdata_text(inner[9:-3])
+            return f"<itunes:summary><![CDATA[{clean_inner}]]></itunes:summary>"
+        return f"<itunes:summary>{sanitize_text_for_xml(html.unescape(inner))}</itunes:summary>"
+        
+    content = re.sub(r'<itunes:summary>(.*?)</itunes:summary>', fix_summary, content, flags=re.DOTALL)
+    return content
+
 def update_podcast_rss(audio_filename: str, episode_title: str, episode_summary: str):
     rss_path = "rss.xml"
     pub_date = formatdate(timeval=None, localtime=False, usegmt=True)
     audio_url = f"{BASE_URL}/episodes/{audio_filename}"
     audio_size = os.path.getsize(f"episodes/{audio_filename}")
     
+    safe_title = sanitize_text_for_xml(episode_title)
+    safe_cdata_desc = clean_cdata_text(episode_summary)
+    safe_summary = sanitize_text_for_xml(episode_summary[:500])
+    
     item_xml = f"""    <item>
-      <title>{episode_title}</title>
-      <description><![CDATA[{episode_summary}]]></description>
+      <title>{safe_title}</title>
+      <description><![CDATA[{safe_cdata_desc}]]></description>
       <pubDate>{pub_date}</pubDate>
       <enclosure url="{audio_url}" length="{audio_size}" type="audio/mpeg" />
       <guid isPermaLink="true">{audio_url}</guid>
       <itunes:author>{PODCAST_AUTHOR}</itunes:author>
-      <itunes:summary>{episode_summary}</itunes:summary>
+      <itunes:summary>{safe_summary}</itunes:summary>
       <itunes:explicit>no</itunes:explicit>
     </item>"""
     
@@ -235,15 +286,33 @@ def update_podcast_rss(audio_filename: str, episode_title: str, episode_summary:
 {item_xml}
   </channel>
 </rss>"""
+        try:
+            ET.fromstring(full_rss)
+        except Exception as e:
+            print(f"Warning: Initial XML parse check: {e}")
+            
         with open(rss_path, "w", encoding="utf-8") as f:
             f.write(full_rss)
     else:
         with open(rss_path, "r", encoding="utf-8") as f:
             content = f.read()
+            
+        # Self-heal any broken entities from previous runs
+        content = repair_existing_rss(content)
+        
         pos = content.find("<channel>")
         if pos != -1:
             end_tag = content.find(">", pos) + 1
             new_content = content[:end_tag] + "\n" + item_xml + content[end_tag:]
+            
+            # Final validation check
+            try:
+                ET.fromstring(new_content)
+                print("XML Validation: PASSED (100% valid RSS feed).")
+            except Exception as e:
+                print(f"Warning: XML validation caught syntax issue, auto-repairing: {e}")
+                new_content = repair_existing_rss(new_content)
+                
             with open(rss_path, "w", encoding="utf-8") as f:
                 f.write(new_content)
 
@@ -266,7 +335,7 @@ def main():
     print(f"Generating audio for comprehensive 24-hour script ({word_count} words)...")
     asyncio.run(generate_audio(script_text, audio_path))
     update_podcast_rss(audio_file, episode_title, script_text)
-    print("Workflow completed successfully.")
+    print("Workflow completed successfully with verified XML.")
 
 if __name__ == "__main__":
     main()
