@@ -13,7 +13,7 @@ import edge_tts
 import requests
 
 PODCAST_TITLE = "My Daily Executive Briefing"
-PODCAST_DESCRIPTION = "Comprehensive audio briefing covering the last 24 hours of Global Economy, General Tech, AI Chatbots, Payments, and Agentic Commerce across the US, India, and Japan."
+PODCAST_DESCRIPTION = "Comprehensive executive audio briefing covering Global Economy, Big Tech, AI Chatbots, Payments, Agentic Commerce (US, India, Southeast Asia), and trending discussions on X."
 PODCAST_AUTHOR = "Executive AI"
 BASE_URL = os.environ.get("BASE_URL", "https://peeyusha.github.io/daily-morning-podcast")
 VOICE = "en-US-AndrewNeural"
@@ -22,15 +22,14 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 MODELS_TO_TRY = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
 
 def fetch_live_news_deep():
-    """Fetches news published strictly within the last 24 hours across our targeted sectors."""
+    """Fetches news published strictly within the last 24 hours from targeted, verified sources."""
     topics = {
-        "Global Economy & Central Banks": "global economy inflation central bank Federal Reserve GDP interest rates when:24h",
-        "General Tech & Enterprise Software": "technology news big tech software hardware earnings when:24h",
-        "AI Frontier Models & Chatbots": "generative AI frontier models chatbot OpenAI Anthropic Google Meta LLM when:24h",
-        "US Payments & Agentic Commerce": "US agentic commerce AI checkout shopping payments Stripe Visa Mastercard when:24h",
-        "India Digital Public Infrastructure & Fintech": "India UPI ONDC fintech RBI payments policy when:24h",
-        "Japan Cashless & Financial Tech": "Japan fintech payments cashless digital yen PayPay FSA when:24h",
-        "Strategic Partnerships & Product Launches": "fintech AI partnership product launch payments commerce when:24h"
+        "Global Macro & Economy (WSJ, Bloomberg, Reuters)": "site:wsj.com OR site:reuters.com OR site:bloomberg.com economy markets Federal Reserve inflation GDP when:24h",
+        "Big Tech, AI & Startups (TechCrunch, The Information)": "site:techcrunch.com OR site:theinformation.com OR site:venturebeat.com AI models technology startups when:24h",
+        "India Payments & DPI (Economic Times, Entrackr, MediaNama)": "site:economictimes.indiatimes.com OR site:entrackr.com OR site:medianama.com UPI payments fintech ONDC RBI when:24h",
+        "Southeast Asia Tech Hubs (Business Times, Tech in Asia, Fintech News SG)": "site:businesstimes.com.sg OR site:techinasia.com OR site:fintechnews.sg economy tech fintech when:24h",
+        "Agentic Commerce & Checkout Rails (Payments Dive, The Paypers)": "site:paymentsdive.com OR site:thepaypers.com OR agentic commerce AI checkout autonomous payments when:24h",
+        "Trending Discussions on X (Twitter Radar)": '("on X" OR "on Twitter" OR "viral thread" OR "tweeted") (AI OR "agentic commerce" OR payments OR tech OR economy) when:24h'
     }
     
     gathered_news = []
@@ -51,7 +50,7 @@ def fetch_live_news_deep():
                 desc = item.find("description").text if item.find("description") is not None else ""
                 pub_date_elem = item.find("pubDate")
                 
-                # Check timestamp to enforce 24-hour recency
+                # Enforce strict 24-hour window
                 if pub_date_elem is not None and pub_date_elem.text:
                     try:
                         pub_dt = parsedate_to_datetime(pub_date_elem.text)
@@ -76,7 +75,7 @@ def fetch_live_news_deep():
     return "\n\n".join(gathered_news), news_items_structured
 
 def clean_script_for_audio(raw_text: str) -> str:
-    """Sanitizes text so speech engine reads only pure broadcast dialogue."""
+    """Sanitizes text so speech engine reads only pure broadcast dialogue without metadata or symbols."""
     match = re.search(r'(Good (morning|afternoon|evening).*|\bHere is your executive.*)', raw_text, re.IGNORECASE | re.DOTALL)
     if match:
         text = match.group(0)
@@ -96,13 +95,13 @@ def clean_script_for_audio(raw_text: str) -> str:
 def build_standalone_rss_broadcast(structured_news, now_str):
     """Fallback generator: Compiles a rich report directly from 24-hour articles if AI APIs are down."""
     lines = [
-        f"Good morning. Here is your executive briefing for {now_str}, covering breaking developments from the past 24 hours.",
-        "Today we bring you an exhaustive update across the global economy, general technology, artificial intelligence, payments, and agentic commerce across the United States, India, and Japan.",
+        f"Good morning. Here is your executive briefing for {now_str}, covering breaking business, technology, and payments developments from the past 24 hours.",
+        "Today we bring you in-depth updates from major market publications across the United States, India, and Southeast Asia, along with key community discussions on X.",
     ]
     
     for category, items in structured_news.items():
         clean_cat = category.replace('&', 'and')
-        lines.append(f"\nTurning now to developments over the last 24 hours in {clean_cat}:")
+        lines.append(f"\nTurning now to developments in {clean_cat}:")
         for item in items:
             t = re.sub(r'#|\*|-', '', item['title']).strip()
             s = re.sub(r'#|\*|-', '', item['summary']).strip()
@@ -121,41 +120,41 @@ def get_today_script():
     
     prompt = f"""
 You are an executive broadcast news anchor and senior industry analyst.
-Synthesize the following live news reports for {now_str} into a comprehensive, detailed 10-to-14 minute audio briefing (approx. 1,400 to 1,800 words):
+Synthesize the following live news reports for {now_str} into a comprehensive, detailed, data-dense 10-to-14 minute audio briefing (approx. 1,400 to 1,800 words):
 
 {raw_news_context}
 
-CRITICAL TIMEFRAME CONSTRAINT:
+CRITICAL TIMEFRAME & ANTI-FILLER CONSTRAINTS:
 - Cover EXCLUSIVELY events, announcements, and data released in the PAST 24 HOURS.
-- Treat this as a fresh daily morning newspaper. Do not summarize historical background or outdated stories.
+- ZERO FILLER WORDS: Absolutely ban generic clichés like "In today's fast-paced world", "It is worth noting", "As we look ahead", "Navigating the complexities", "Delving into", or "A testament to".
+- Lead directly with facts: Name the specific company, executive, product, dollar figure, percentage change, and regulatory impact.
 
-Provide exhaustive, in-depth coverage across these core sections:
+Provide comprehensive, structured coverage across these core sections:
 
-1. Global Economy & Major Markets (Past 24 Hours):
-   - Macroeconomic updates from major financial wire sources (interest rate outlooks, central bank commentary from Fed, ECB, BOJ, MAS, RBI).
-   - Fresh inflation data (CPI/PPI prints), GDP forecasts, sovereign bond movements, and energy supply-chain updates.
+1. Global Economy & Major Markets (WSJ, Bloomberg, Reuters):
+   - Federal Reserve, central bank policy (ECB, BOJ, MAS, RBI), interest rate trajectories, inflation data (CPI/PPI), sovereign bond yields, and currency moves.
 
-2. General Tech News & Enterprise Shifts (Past 24 Hours):
-   - Big Tech strategic moves, major quarterly earnings reactions, cloud infrastructure, and semiconductor fabrication.
-   - Enterprise software, cybersecurity developments, and platform updates.
+2. Big Tech, Enterprise Software & AI Breakthroughs (TechCrunch, The Information, VentureBeat):
+   - Frontier foundation models, multimodal LLMs, consumer/enterprise chatbot developments (ChatGPT, Claude, Gemini, Meta AI, open-source weights).
+   - Major enterprise software shifts, cloud infrastructure capex, chip fabrication, and venture deals.
 
-3. Artificial Intelligence & Chatbot Ecosystem (Past 24 Hours):
-   - Frontier foundation model releases and research breakthroughs (multimodal reasoning, context scaling).
-   - Chatbot developments and consumer/enterprise assistant updates (ChatGPT, Claude, Gemini, Meta AI, open-source weights).
-   - Enterprise AI copilot adoption and agent developer tooling.
+3. India Payments, Policy & Digital Public Infrastructure (The Economic Times, Entrackr, MediaNama):
+   - Unified Payments Interface (UPI) volume, credit-on-UPI developments, ONDC retail network expansion, OCEN digital credit.
+   - Reserve Bank of India (RBI) circulars, NPCI cross-border linkage expansions, fintech licensing, and startup partnerships.
 
-4. Deep Focus: Payments, Shopping & Agentic Commerce across Key Markets (Past 24 Hours):
-   - United States: Autonomous AI shopping agents, machine-to-machine checkout rails, merchant platforms (Shopify, Amazon, Walmart), payment network standards (Visa, Mastercard, Stripe, PayPal, FedNow), and regulatory policy (FTC, CFPB).
-   - India: Digital Public Infrastructure (UPI, ONDC, OCEN), credit-on-UPI, biometric payments, RBI circulars, and NPCI cross-border bilateral links.
-   - Japan: Cashless transition momentum, digital wallet ecosystems (PayPay, Rakuten Pay, Line Pay), Financial Services Agency (FSA) regulations, digital yen, and retail AI pilots.
+4. Southeast Asia Tech & Regional Hubs (The Business Times, Tech in Asia, Fintech News Singapore):
+   - Singapore GDP growth, MAS regulatory sandboxes, trade data (NODX), cross-border payment links (PayNow, Project Nexus), and ASEAN digital commerce platforms.
 
-5. Product Announcements, Partnerships & Major Events (Past 24 Hours):
-   - Keynote speeches, major partnership agreements between banks, payment processors, and AI platforms.
-   - Notable industry summits and regulatory forums.
+5. Deep Dive: Agentic Commerce, Autonomous Checkout & Merchant Rails (Payments Dive, The Paypers):
+   - Autonomous AI shopping agents, machine-to-machine checkout rails, merchant integrations (Shopify, Amazon, Walmart).
+   - Card networks and settlement infrastructure (Visa, Mastercard, Stripe, PayPal, FedNow, stablecoins), verifiable intent tokens, and regulatory policy (FTC, CFPB).
+
+6. Community Radar & Trending Discussions on X (Twitter):
+   - Key debates, viral technical threads, founder perspectives, and community sentiment being actively discussed on X in the past 24 hours around AI agents, payments, and macroeconomics.
 
 Strict Spoken Audio Formatting Rules:
-- LENGTH: Deep, long-form broadcast (between 1,400 and 1,800 words). Cover substantive details and context.
-- TONE: Professional, authoritative, engaging broadcast tone (written strictly for listening with earphones).
+- LENGTH: Deep, long-form broadcast (between 1,400 and 1,800 words). Cover substantive details, quotes, and context.
+- TONE: Professional, authoritative, punchy, objective broadcast tone (written strictly for listening with earphones).
 - FORMAT: Output ONLY the spoken text. Begin immediately with: "Good morning. Here is your executive news briefing for {now_str}, covering key developments from the past 24 hours."
 - Write all numbers, currency figures, and acronyms phonetically in spoken words (e.g. "two point five billion dollars", "U-P-I", "O-N-D-C", "F-S-A", "R-B-I", "L-L-Ms").
 - Do NOT output any outlines, planning scratchpads, target word counts, markdown asterisks, or headings. Output pure spoken narrative.
@@ -167,7 +166,7 @@ Strict Spoken Audio Formatting Rules:
             payload = {
                 "systemInstruction": {
                     "parts": [{
-                        "text": "You are a senior broadcast journalist. Output exclusively the full, continuous spoken audio script with zero outlines, zero asterisks, zero markdown, and zero meta-commentary."
+                        "text": "You are a senior broadcast journalist. Output exclusively the full, continuous spoken audio script with zero outlines, zero asterisks, zero markdown, zero filler clichés, and zero meta-commentary."
                     }]
                 },
                 "contents": [{"parts": [{"text": prompt}]}],
